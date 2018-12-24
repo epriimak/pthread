@@ -1,10 +1,11 @@
 #include <iostream>
 #include <cstdlib>
 
+
 #include "SetOS.h"
 #include "SetLS.h"
 
-#define NUM_EL_IN_SET 100
+#define NUM_EL_IN_SET 10000
 #define NUM_THR 5
 
 typedef void* (*func)(void* args);
@@ -34,9 +35,8 @@ void* readOS(void* args){
 	*count = 0;
 	for(int i = 0; i < NUM_EL_IN_SET; i++){
 		int num = i + 1;
-		if (pSet1->contains(num)){
+		if (pSet1->contains(num) && pSet1->remove(num)){
 			++(*count);
-			pSet1->remove(num);
 		}
 	}
 	pthread_exit(0);
@@ -48,16 +48,14 @@ void* readLS(void* args){
 	*count = 0;
 	for(int i = 0; i < NUM_EL_IN_SET; i++){
 		int num = i + 1;
-		if (pSet2->contains(num)){
-			++(*count);
-			pSet2->remove(num);
+		if (pSet2->contains(num) && pSet2->remove(num)){
+			++(*count);		
 		}
 	}
 	pthread_exit(0);
 }
 
-bool many2one(func pWriteFunc, func pReadFunc)
-{
+bool many2one(func pWriteFunc, func pReadFunc){
 	pSet1 = new SetOS<int>();
 	pSet2 = new SetLS<int>();
 	
@@ -85,8 +83,7 @@ bool many2one(func pWriteFunc, func pReadFunc)
     return (count == NUM_EL_IN_SET);
 }
 
-int one2many(func pWriteFunc, func pReadFunc)
-{
+bool one2many(func pWriteFunc, func pReadFunc){
 	pSet1 = new SetOS<int>();
 	pSet2 = new SetLS<int>();
 
@@ -118,8 +115,7 @@ int one2many(func pWriteFunc, func pReadFunc)
     return (sum == NUM_EL_IN_SET);
 }
 
-bool many2many(func pWriteFunc, func pReadFunc)
-{
+bool many2many(func pWriteFunc, func pReadFunc){
 	pSet1 = new SetOS<int>();
 	pSet2 = new SetLS<int>();
 
@@ -156,6 +152,51 @@ bool many2many(func pWriteFunc, func pReadFunc)
     return (sum == NUM_EL_IN_SET);
 }
 
+bool many2manyTogether(func pWriteFunc, func pReadFunc){
+	pSet1 = new SetOS<int>();
+	pSet2 = new SetLS<int>();
+
+	pthread_t thrR[NUM_THR];
+	pthread_t thrW[NUM_THR];
+	pthread_t thr;
+	int count[NUM_THR];
+
+
+	for(int i = 0; i < NUM_THR; i++){
+		if (pthread_create(&thrW[i], NULL, pWriteFunc, NULL) != 0)
+    		syslog(LOG_INFO, "Error creating thread");
+  	}
+
+  	for(int i = 0; i < NUM_THR; i++){
+		if (pthread_create(&thrR[i], NULL, pReadFunc, &count[i]) != 0)
+    		syslog(LOG_INFO, "Error creating thread");
+  	}
+
+	for(int i = 0; i < NUM_THR; i++){
+    	pthread_join(thrW[i], NULL);	
+    }
+
+    for(int i = 0; i < NUM_THR; i++){
+    	pthread_join(thrR[i], NULL);	
+    }
+
+
+    int restCount = 0;
+    if (pthread_create(&thr, NULL, pReadFunc, &restCount) != 0)
+    	syslog(LOG_INFO, "Error creating thread");
+    pthread_join(thr, NULL);
+
+	int sum = 0;
+    for(int i = 0; i < NUM_THR; i++){
+    	sum += count[i];
+    }
+
+    delete pSet1;
+    delete pSet2;   
+    
+    return ((sum + restCount) == NUM_EL_IN_SET);
+}
+
 void printRes(bool res){
 	res ? std::cout << "OK" : std::cout << "WRONG";
 	std::cout << std:: endl;
@@ -172,6 +213,9 @@ int main()
 
     std::cout << "OS: many2many: ";
     printRes(many2many(&writeOS, &readOS));
+
+    std::cout << "OS: many2manyTogether: ";
+    printRes(many2manyTogether(&writeOS, &readOS));
     
     //test for LS
    	std::cout << "LS: many2one: ";
@@ -183,5 +227,8 @@ int main()
 	std::cout << "LS: many2many: ";
     printRes(many2many(&writeLS, &readLS));
 
+    std::cout << "LS: many2manyTogether: ";
+    printRes(many2manyTogether(&writeLS, &readLS));
+    
     return 0;
 }

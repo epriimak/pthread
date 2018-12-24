@@ -114,10 +114,10 @@ public:
       if (validate(prev, cur)){
         if (cur->key == key){
           cur->marked = true;
-          prev->next = cur->next;
-          delete cur;
           prev->unlock();
           cur->unlock();
+          prev->next = cur->next;
+          delete cur;
           return true;
         }
         else{
